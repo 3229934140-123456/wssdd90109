@@ -66,6 +66,21 @@ export interface HeatSnapshot {
   note?: string
 }
 
+export type EventStatus = 'emerging' | 'escalating' | 'peak' | 'handling' | 'cooling' | 'resolved'
+
+export interface ReputationEvent {
+  id: string
+  name: string
+  description: string
+  category: 'product' | 'brand' | 'competitor' | 'service'
+  status: EventStatus
+  peakHeat: number
+  postIds: string[]
+  firstSeen: string
+  lastUpdated: string
+  tags: string[]
+}
+
 export interface FilterPreset {
   id: string
   name: string
@@ -75,6 +90,7 @@ export interface FilterPreset {
   changeType: ChangeType | ''
   forum: string
   board: string
+  matchKeywords?: string[]
   builtIn?: boolean
 }
 
@@ -134,4 +150,20 @@ export const HEAT_EVENT_LABELS: Record<'emerged' | 'heating' | 'peak' | 'dispose
   peak: '热度峰值',
   disposed: '介入处置',
   cooling: '热度降温',
+}
+
+export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
+  emerging: '初现端倪',
+  escalating: '持续发酵',
+  peak: '热度峰值',
+  handling: '介入处置',
+  cooling: '热度下降',
+  resolved: '事件闭环',
+}
+
+export const EVENT_CATEGORY_LABELS: Record<ReputationEvent['category'], string> = {
+  product: '产品质量',
+  brand: '品牌声誉',
+  competitor: '竞品对比',
+  service: '客服售后',
 }

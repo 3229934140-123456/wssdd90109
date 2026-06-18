@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import {
   X, Plus, Tag, ChevronDown, ChevronRight, MessageSquare, TrendingUp,
   AlertTriangle, Sparkles, Gauge, Zap, Check, History, BarChart3,
-  ArrowUpRight, ArrowDownRight, Minus,
+  ArrowUpRight, ArrowDownRight, Minus, ExternalLink, Target,
 } from 'lucide-react'
 import { useStore } from '@/store'
 import {
@@ -38,11 +38,13 @@ export default function KeywordPanel({ open, onClose }: KeywordPanelProps) {
     keywords, addKeyword, removeKeyword, updateKeywordCategory,
     getKeywordHitCount, getPostsByKeyword, getCategoryCoverage,
     getUnmatchedHighHeatNegative, getSuggestedKeywords, keywordAdoptions,
+    getNewlyMatchedPosts, getTotalCoverage,
   } = useStore()
 
   const [newText, setNewText] = useState('')
   const [newCategory, setNewCategory] = useState<KeywordCategory>('brand')
   const [expandedKw, setExpandedKw] = useState<string | null>(null)
+  const [expandedAdoption, setExpandedAdoption] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'keywords' | 'ops' | 'tracking'>('keywords')
 
   const handleAdd = () => {
@@ -87,23 +89,7 @@ export default function KeywordPanel({ open, onClose }: KeywordPanelProps) {
     return { todayAdoptions, byCategory }
   }, [keywordAdoptions])
 
-  const totalCoverage = useMemo(() => {
-    const { posts, keywords: allKw } = { posts: useStore.getState().posts, keywords: useStore.getState().keywords }
-    const neg = posts.filter((p) => p.sentiment === 'negative')
-    if (neg.length === 0) return 0
-    let hit = 0
-    for (const p of neg) {
-      for (const kw of allKw) {
-        const t = kw.text.toLowerCase()
-        if (
-          p.title.toLowerCase().includes(t) ||
-          p.summary.toLowerCase().includes(t) ||
-          p.matchedKeywords.some((k) => k.toLowerCase() === t)
-        ) { hit++; break }
-      }
-    }
-    return Math.round((hit / neg.length) * 100)
-  }, [])
+  const totalCoverage = getTotalCoverage()
 
   if (!open) return null
 
@@ -417,10 +403,10 @@ export default function KeywordPanel({ open, onClose }: KeywordPanelProps) {
               <div className="space-y-2">
                 <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
                   <History className="h-3.5 w-3.5 text-sky-400" />
-                  采纳记录
+                  采纳记录与效果
                   {keywordAdoptions.length > 0 && (
                     <span className="ml-auto text-[10px] font-normal text-gray-600">
-                      共 {keywordAdoptions.length} 次
+                      共 {keywordAdoptions.length} 次 · 点击展开查看命中帖
                     </span>
                   )}
                 </h3>
@@ -429,45 +415,107 @@ export default function KeywordPanel({ open, onClose }: KeywordPanelProps) {
                     {[...keywordAdoptions].reverse().map((adopt, i) => {
                       const afterCov = getCategoryCoverage(adopt.category)
                       const delta = adopt.coverageBefore !== undefined ? afterCov - adopt.coverageBefore : null
+                      const newlyMatched = getNewlyMatchedPosts(adopt.keyword)
+                      const isExpanded = expandedAdoption === adopt.id
                       return (
-                        <div key={adopt.id} className="rounded-lg border border-white/5 bg-white/[0.02] p-3">
-                          <div className="flex items-center gap-2 mb-1">
-                            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
-                              style={{ backgroundColor: `${CATEGORY_COLORS[adopt.category]}20` }}>
-                              <Check className="h-3 w-3" style={{ color: CATEGORY_COLORS[adopt.category] }} />
+                        <div key={adopt.id} className={cn(
+                          'overflow-hidden rounded-lg border transition-colors',
+                          isExpanded ? 'border-sky-500/30 bg-sky-500/[0.03]' : 'border-white/5 bg-white/[0.02]'
+                        )}>
+                          <div
+                            className="cursor-pointer p-3"
+                            onClick={() => setExpandedAdoption(isExpanded ? null : adopt.id)}
+                          >
+                            <div className="flex items-center gap-2 mb-1">
+                              {isExpanded ? (
+                                <ChevronDown className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                              ) : (
+                                <ChevronRight className="h-3.5 w-3.5 text-gray-500 shrink-0" />
+                              )}
+                              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md"
+                                style={{ backgroundColor: `${CATEGORY_COLORS[adopt.category]}20` }}>
+                                <Check className="h-3 w-3" style={{ color: CATEGORY_COLORS[adopt.category] }} />
+                              </div>
+                              <span className="text-[12px] font-medium text-gray-200">「{adopt.keyword}」</span>
+                              <span className="rounded-full px-1.5 py-0.5 text-[9px]"
+                                style={{
+                                  backgroundColor: `${CATEGORY_COLORS[adopt.category]}18`,
+                                  color: CATEGORY_COLORS[adopt.category],
+                                }}>
+                                {KEYWORD_CATEGORY_LABELS[adopt.category]}
+                              </span>
+                              {delta !== null && (
+                                <span className={cn(
+                                  'ml-auto flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium',
+                                  delta > 0
+                                    ? 'bg-emerald-500/10 text-emerald-400'
+                                    : delta < 0
+                                    ? 'bg-rose-500/10 text-rose-400'
+                                    : 'bg-gray-500/10 text-gray-400'
+                                )}>
+                                  {delta > 0 ? <ArrowUpRight className="h-2.5 w-2.5" /> :
+                                   delta < 0 ? <ArrowDownRight className="h-2.5 w-2.5" /> :
+                                   <Minus className="h-2.5 w-2.5" />}
+                                  {delta > 0 ? '+' : ''}{delta}%
+                                </span>
+                              )}
                             </div>
-                            <span className="text-[12px] font-medium text-gray-200">「{adopt.keyword}」</span>
-                            <span className="rounded-full px-1.5 py-0.5 text-[9px]"
-                              style={{
-                                backgroundColor: `${CATEGORY_COLORS[adopt.category]}18`,
-                                color: CATEGORY_COLORS[adopt.category],
-                              }}>
-                              {KEYWORD_CATEGORY_LABELS[adopt.category]}
-                            </span>
-                            {delta !== null && (
-                              <span className={cn(
-                                'ml-auto flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-medium',
-                                delta > 0
-                                  ? 'bg-emerald-500/10 text-emerald-400'
-                                  : delta < 0
-                                  ? 'bg-rose-500/10 text-rose-400'
-                                  : 'bg-gray-500/10 text-gray-400'
-                              )}>
-                                {delta > 0 ? <ArrowUpRight className="h-2.5 w-2.5" /> :
-                                 delta < 0 ? <ArrowDownRight className="h-2.5 w-2.5" /> :
-                                 <Minus className="h-2.5 w-2.5" />}
-                                覆盖率 {delta > 0 ? '+' : ''}{delta}%
+                            <div className="flex items-center justify-between text-[10px] text-gray-600 pl-8">
+                              {adopt.coverageBefore !== undefined ? (
+                                <span>
+                                  采纳前 {adopt.coverageBefore}% → 当前 {afterCov}%
+                                </span>
+                              ) : (
+                                <span>当前覆盖率 {afterCov}%</span>
+                              )}
+                              <span className="flex items-center gap-1">
+                                <Target className="h-2.5 w-2.5" />
+                                新命中 {newlyMatched.length} 帖
+                                <span className="text-gray-700">·</span>
+                                {formatTimeShort(adopt.adoptedAt)}
                               </span>
-                            )}
+                            </div>
                           </div>
-                          <div className="flex items-center justify-between text-[10px] text-gray-600 pl-8">
-                            {adopt.coverageBefore !== undefined && (
-                              <span>
-                                采纳前 {adopt.coverageBefore}% → 当前 {afterCov}%
-                              </span>
-                            )}
-                            <span>{formatTimeShort(adopt.adoptedAt)}</span>
-                          </div>
+
+                          {isExpanded && (
+                            <div className="border-t border-white/5 bg-black/20 p-2.5 animate-fade-in">
+                              {newlyMatched.length > 0 ? (
+                                <>
+                                  <p className="mb-2 px-1 text-[10px] uppercase tracking-wider text-gray-600">
+                                    新增命中帖子 ({newlyMatched.length})
+                                  </p>
+                                  <div className="space-y-1.5 max-h-40 overflow-y-auto scrollbar-thin">
+                                    {newlyMatched.map((post: Post) => (
+                                      <a
+                                        key={post.id}
+                                        href={post.originalUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="group flex items-start gap-2 rounded-lg bg-white/[0.03] px-2.5 py-2 transition-colors hover:bg-white/[0.06]"
+                                      >
+                                        <div className={cn('mt-1 h-1.5 w-1.5 shrink-0 rounded-full',
+                                          post.sentiment === 'positive' ? 'bg-emerald-500' :
+                                          post.sentiment === 'negative' ? 'bg-rose-500' : 'bg-gray-500')} />
+                                        <div className="min-w-0 flex-1">
+                                          <p className="line-clamp-1 text-[11px] leading-snug text-gray-400 group-hover:text-gray-200">{post.title}</p>
+                                          <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-gray-600">
+                                            <span>{post.forum}</span>
+                                            <span>·</span>
+                                            <span className="text-amber-400/70">热度 {post.heatScore}</span>
+                                          </div>
+                                        </div>
+                                        <ExternalLink className="h-3 w-3 shrink-0 text-gray-600 group-hover:text-sky-400" />
+                                      </a>
+                                    ))}
+                                  </div>
+                                </>
+                              ) : (
+                                <p className="text-center text-[10px] text-gray-600 py-2">
+                                  该词没有单独命中的新帖子（可能与其他关键词重复覆盖）
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
@@ -477,6 +525,41 @@ export default function KeywordPanel({ open, onClose }: KeywordPanelProps) {
                     <History className="mx-auto mb-1.5 h-6 w-6 text-gray-600" />
                     暂无采纳记录<br />
                     在"运营分析"中建议关键词点击加入后，会在这里追踪效果
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <h3 className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                  <AlertTriangle className="h-3.5 w-3.5 text-rose-400" />
+                  仍未命中的高热负面帖
+                  {unmatchedPosts.length > 0 && (
+                    <span className="ml-auto rounded-full bg-rose-500/15 px-1.5 py-0.5 text-[9px] font-bold text-rose-400">{unmatchedPosts.length}</span>
+                  )}
+                </h3>
+                {unmatchedPosts.length > 0 ? (
+                  <div className="space-y-1.5">
+                    {unmatchedPosts.slice(0, 5).map((post) => (
+                      <div key={post.id} className="flex items-start gap-2 rounded-lg border border-rose-500/10 bg-rose-500/[0.03] px-3 py-2">
+                        <Zap className="mt-0.5 h-3.5 w-3.5 shrink-0 text-rose-400" />
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 text-[11px] text-gray-300">{post.title}</p>
+                          <div className="mt-0.5 flex items-center gap-2 text-[10px] text-gray-600">
+                            <span>{post.forum}</span><span>·</span><span className="text-rose-400">热度 {post.heatScore}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                    {unmatchedPosts.length > 5 && (
+                      <p className="text-center text-[10px] text-gray-600 pt-1">
+                        还有 {unmatchedPosts.length - 5} 条未命中，前往「运营分析」查看完整列表
+                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center rounded-lg border border-emerald-500/10 bg-emerald-500/[0.02] p-4 text-[11px] text-emerald-400/80">
+                    <TrendingUp className="mr-1.5 h-3.5 w-3.5" />
+                    所有高热负面帖均已覆盖
                   </div>
                 )}
               </div>
