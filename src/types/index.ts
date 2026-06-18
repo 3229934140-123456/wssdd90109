@@ -44,6 +44,18 @@ export interface DisposalRecord {
   handledAt: string
 }
 
+export interface FilterPreset {
+  id: string
+  name: string
+  sentiment: Sentiment | ''
+  category: PostCategory | ''
+  replySpeed: ReplySpeed | ''
+  changeType: ChangeType | ''
+  forum: string
+  board: string
+  builtIn?: boolean
+}
+
 export type RiskLevel = 'low' | 'medium' | 'high' | 'urgent'
 
 export interface DailyReport {

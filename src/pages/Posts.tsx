@@ -1,14 +1,14 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useStore } from '@/store'
 import { useSearchParams } from 'react-router-dom'
-import { FileText, Search, CheckCircle, Clock } from 'lucide-react'
+import { FileText, Search, CheckCircle, Clock, Bookmark } from 'lucide-react'
 import PostCard from '@/components/PostCard'
 import PostDetailModal from '@/components/PostDetailModal'
 import FilterBar from '@/components/FilterBar'
-import type { Post, Sentiment, PostCategory, ReplySpeed, ChangeType } from '@/types'
+import type { Post, Sentiment, PostCategory, ReplySpeed, ChangeType, FilterPreset } from '@/types'
 
 export default function Posts() {
-  const { posts, getDisposalByPostId } = useStore()
+  const { posts, getDisposalByPostId, filterPresets } = useStore()
   const [searchParams, setSearchParams] = useSearchParams()
 
   const [sentiment, setSentiment] = useState<Sentiment | ''>('')
@@ -21,6 +21,17 @@ export default function Posts() {
   const [board, setBoard] = useState('')
   const [search, setSearch] = useState('')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
+  const [activePresetId, setActivePresetId] = useState<string | null>(null)
+
+  const handleApplyPreset = (preset: FilterPreset) => {
+    setSentiment(preset.sentiment)
+    setCategory(preset.category)
+    setReplySpeed(preset.replySpeed)
+    setChangeType(preset.changeType)
+    setForum(preset.forum)
+    setBoard(preset.board)
+    setActivePresetId(preset.id)
+  }
 
   useEffect(() => {
     const nextParams: Record<string, string> = {}
@@ -94,10 +105,19 @@ export default function Posts() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-100">帖子分层</h1>
+          <h1 className="flex items-center gap-2 text-2xl font-bold text-gray-100">
+            帖子分层
+            {activePresetId && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-0.5 text-[11px] font-normal text-amber-400">
+                <Bookmark className="h-3 w-3" />
+                {filterPresets.find((p) => p.id === activePresetId)?.name}
+              </span>
+            )}
+          </h1>
           <p className="mt-1 text-sm text-gray-500">
             共 {posts.length} 条讨论 · 已处置 <span className="text-emerald-400">{handledCount}</span> 条 ·
-            高风险未处理 <span className="text-rose-400">{unhandledHighRiskCount}</span> 条
+            高风险未处理 <span className="text-rose-400">{unhandledHighRiskCount}</span> 条 ·
+            当前筛选 <span className="text-amber-400">{filtered.length}</span> 条
           </p>
         </div>
         <div className="relative">
@@ -105,7 +125,10 @@ export default function Posts() {
           <input
             type="text"
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setActivePresetId(null)
+            }}
             placeholder="搜索标题、摘要或关键词..."
             className="w-72 rounded-lg border border-white/10 bg-white/5 py-2 pl-9 pr-3 text-sm text-gray-200 placeholder-gray-600 outline-none transition-colors focus:border-amber-500/40"
           />
@@ -137,15 +160,16 @@ export default function Posts() {
         forum={forum}
         board={board}
         resultCount={filtered.length}
-        onSentimentChange={setSentiment}
-        onCategoryChange={setCategory}
-        onReplySpeedChange={setReplySpeed}
-        onChangeTypeChange={setChangeType}
-        onForumChange={setForum}
-        onBoardChange={setBoard}
-        onReset={handleReset}
+        onSentimentChange={(v) => { setSentiment(v); setActivePresetId(null) }}
+        onCategoryChange={(v) => { setCategory(v); setActivePresetId(null) }}
+        onReplySpeedChange={(v) => { setReplySpeed(v); setActivePresetId(null) }}
+        onChangeTypeChange={(v) => { setChangeType(v); setActivePresetId(null) }}
+        onForumChange={(v) => { setForum(v); setActivePresetId(null) }}
+        onBoardChange={(v) => { setBoard(v); setActivePresetId(null) }}
+        onReset={() => { handleReset(); setActivePresetId(null) }}
         forums={forums}
         boards={filteredBoards}
+        onApplyPreset={handleApplyPreset}
       />
 
       {filtered.length === 0 ? (

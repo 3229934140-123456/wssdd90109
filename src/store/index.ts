@@ -1,11 +1,18 @@
 import { create } from 'zustand'
-import type { Keyword, Post, DisposalRecord, DisposalStatus, KeywordCategory } from '@/types'
+import type { Keyword, Post, DisposalRecord, DisposalStatus, KeywordCategory, FilterPreset, Sentiment, PostCategory, ReplySpeed, ChangeType } from '@/types'
 import { MOCK_KEYWORDS, MOCK_POSTS } from '@/data/mock'
 
 const STORAGE_KEYS = {
   keywords: 'reputation_keywords_v1',
   disposalRecords: 'reputation_disposals_v1',
+  filterPresets: 'reputation_filter_presets_v1',
 }
+
+const DEFAULT_PRESETS: FilterPreset[] = [
+  { id: 'preset_aftersales', name: '售后投诉', sentiment: 'negative', category: 'complaint', replySpeed: '', changeType: '', forum: '', board: '', builtIn: true },
+  { id: 'preset_competitor', name: '竞品对比', sentiment: '', category: '', replySpeed: '', changeType: '', forum: '', board: '', builtIn: true },
+  { id: 'preset_ceorisk', name: 'CEO风险', sentiment: 'negative', category: '', replySpeed: '', changeType: 'negative_surge', forum: '', board: '', builtIn: true },
+]
 
 function loadFromStorage<T>(key: string, fallback: T): T {
   try {
@@ -29,6 +36,7 @@ interface AppState {
   keywords: Keyword[]
   posts: Post[]
   disposalRecords: DisposalRecord[]
+  filterPresets: FilterPreset[]
 
   addKeyword: (keyword: Keyword) => void
   removeKeyword: (id: string) => void
@@ -37,16 +45,23 @@ interface AppState {
   addDisposalRecord: (postId: string, status: DisposalStatus, conclusion: string, handler: string) => void
   updateDisposalRecord: (postId: string, status: DisposalStatus, conclusion: string) => void
 
+  addFilterPreset: (preset: Omit<FilterPreset, 'id'>) => void
+  removeFilterPreset: (id: string) => void
+
   getDisposalByPostId: (postId: string) => DisposalRecord | undefined
   getDisposalHistoryByPostId: (postId: string) => DisposalRecord[]
   getPostsByKeyword: (keywordText: string) => Post[]
   getKeywordHitCount: (keywordText: string) => number
+  getCategoryCoverage: (category: KeywordCategory) => number
+  getUnmatchedHighHeatNegative: () => Post[]
+  getSuggestedKeywords: () => { text: string; category: KeywordCategory; reason: string }[]
 }
 
 export const useStore = create<AppState>((set, get) => ({
   keywords: loadFromStorage(STORAGE_KEYS.keywords, [...MOCK_KEYWORDS]),
   posts: [...MOCK_POSTS],
   disposalRecords: loadFromStorage(STORAGE_KEYS.disposalRecords, []),
+  filterPresets: loadFromStorage(STORAGE_KEYS.filterPresets, [...DEFAULT_PRESETS]),
 
   addKeyword: (keyword) =>
     set((state) => {
@@ -137,4 +152,114 @@ export const useStore = create<AppState>((set, get) => ({
         p.summary.toLowerCase().includes(keywordText.toLowerCase()) ||
         p.matchedKeywords.some((k) => k.toLowerCase() === keywordText.toLowerCase())
     ).length,
+
+  addFilterPreset: (preset) =>
+    set((state) => {
+      const next = [...state.filterPresets, { ...preset, id: `fp_${Date.now()}` }]
+      saveToStorage(STORAGE_KEYS.filterPresets, next)
+      return { filterPresets: next }
+    }),
+
+  removeFilterPreset: (id) =>
+    set((state) => {
+      const next = state.filterPresets.filter((p) => p.id !== id)
+      saveToStorage(STORAGE_KEYS.filterPresets, next)
+      return { filterPresets: next }
+    }),
+
+  getCategoryCoverage: (category) => {
+    const { posts, keywords } = get()
+    const categoryKeywords = keywords.filter((k) => k.category === category)
+    const negativePosts = posts.filter((p) => p.sentiment === 'negative')
+    if (negativePosts.length === 0) return 0
+    let hitCount = 0
+    for (const post of negativePosts) {
+      for (const kw of categoryKeywords) {
+        if (
+          post.title.toLowerCase().includes(kw.text.toLowerCase()) ||
+          post.summary.toLowerCase().includes(kw.text.toLowerCase()) ||
+          post.matchedKeywords.some((k) => k.toLowerCase() === kw.text.toLowerCase())
+        ) {
+          hitCount++
+          break
+        }
+      }
+    }
+    return Math.round((hitCount / negativePosts.length) * 100)
+  },
+
+  getUnmatchedHighHeatNegative: () => {
+    const { posts, keywords } = get()
+    return posts
+      .filter((p) => p.sentiment === 'negative' && p.heatScore >= 50)
+      .filter((p) => {
+        return !keywords.some((kw) =>
+          p.title.toLowerCase().includes(kw.text.toLowerCase()) ||
+          p.summary.toLowerCase().includes(kw.text.toLowerCase()) ||
+          p.matchedKeywords.some((k) => k.toLowerCase() === kw.text.toLowerCase())
+        )
+      })
+      .sort((a, b) => b.heatScore - a.heatScore)
+  },
+
+  getSuggestedKeywords: () => {
+    const { posts, keywords } = get()
+    const existingTexts = new Set(keywords.map((k) => k.text.toLowerCase()))
+    const suggestions: { text: string; category: KeywordCategory; reason: string }[] = []
+
+    const negativePosts = posts.filter((p) => p.sentiment === 'negative')
+    for (const post of negativePosts) {
+      const text = `${post.title} ${post.summary}`.toLowerCase()
+      if (text.includes('售后') && !existingTexts.has('售后')) {
+        suggestions.push({ text: '售后', category: 'product', reason: `出现在"${post.title}"` })
+        existingTexts.add('售后')
+      }
+      if ((text.includes('死机') || text.includes('卡顿')) && !existingTexts.has('死机')) {
+        suggestions.push({ text: '死机', category: 'product', reason: `出现在"${post.title}"` })
+        existingTexts.add('死机')
+      }
+      if (text.includes('发热') && !existingTexts.has('发热')) {
+        suggestions.push({ text: '发热', category: 'product', reason: `出现在"${post.title}"` })
+        existingTexts.add('发热')
+      }
+      if (text.includes('客服') && !existingTexts.has('客服')) {
+        suggestions.push({ text: '客服', category: 'brand', reason: `出现在"${post.title}"` })
+        existingTexts.add('客服')
+      }
+      if (text.includes('裁员') && !existingTexts.has('裁员')) {
+        suggestions.push({ text: '裁员', category: 'brand', reason: `出现在"${post.title}"` })
+        existingTexts.add('裁员')
+      }
+      if ((text.includes('wifi') || text.includes('wifi断') || text.includes('断网')) && !existingTexts.has('WiFi断连')) {
+        suggestions.push({ text: 'WiFi断连', category: 'product', reason: `出现在"${post.title}"` })
+        existingTexts.add('wifiduanlian')
+      }
+      if (text.includes('降噪') && !existingTexts.has('降噪')) {
+        suggestions.push({ text: '降噪', category: 'product', reason: `出现在"${post.title}"` })
+        existingTexts.add('jiangzao')
+      }
+    }
+
+    const typoCandidates = [
+      { text: '新星', reason: '常见错别字，用户可能将"星尘"误写为"新星"' },
+      { text: '兴辰', reason: '常见错别字，用户可能将"星辰"误写为"兴辰"' },
+    ]
+    for (const t of typoCandidates) {
+      if (!existingTexts.has(t.text.toLowerCase())) {
+        suggestions.push({ text: t.text, category: 'typo', reason: t.reason })
+      }
+    }
+
+    const competitorCandidates = [
+      { text: '华米', reason: '潜在竞品品牌' },
+      { text: '荣耀', reason: '潜在竞品品牌' },
+    ]
+    for (const c of competitorCandidates) {
+      if (!existingTexts.has(c.text.toLowerCase())) {
+        suggestions.push({ text: c.text, category: 'competitor', reason: c.reason })
+      }
+    }
+
+    return suggestions.slice(0, 10)
+  },
 }))

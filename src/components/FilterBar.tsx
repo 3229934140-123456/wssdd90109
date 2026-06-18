@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { cn } from '@/lib/utils'
-import type { Sentiment, PostCategory, ReplySpeed, ChangeType } from '@/types'
+import type { Sentiment, PostCategory, ReplySpeed, ChangeType, FilterPreset } from '@/types'
 import { CATEGORY_LABELS, SENTIMENT_LABELS } from '@/types'
-import { Filter, RotateCcw, ListFilter } from 'lucide-react'
+import { Filter, RotateCcw, ListFilter, Bookmark, Plus, X, BookmarkPlus } from 'lucide-react'
+import { useStore } from '@/store'
 
 interface FilterBarProps {
   sentiment: Sentiment | ''
@@ -20,6 +22,7 @@ interface FilterBarProps {
   onReset: () => void
   forums: string[]
   boards: string[]
+  onApplyPreset: (preset: FilterPreset) => void
 }
 
 const PILL_CLASS = 'rounded-full border px-3 py-1 text-xs font-medium transition-all cursor-pointer select-none'
@@ -41,17 +44,126 @@ export default function FilterBar({
   onReset,
   forums,
   boards,
+  onApplyPreset,
 }: FilterBarProps) {
+  const { filterPresets, addFilterPreset, removeFilterPreset } = useStore()
+  const [showSaveInput, setShowSaveInput] = useState(false)
+  const [presetName, setPresetName] = useState('')
+
   const hasFilters = sentiment || category || replySpeed || changeType || forum || board
-  const availableBoards = forum
-    ? boards.filter((_, idx) => {
-        const unique = [...new Set(boards)]
-        return true
-      })
-    : boards
+  const availableBoards = forum ? boards.filter((_, idx) => {
+    const unique = [...new Set(boards)]
+    return true
+  }) : boards
+
+  const handleSavePreset = () => {
+    if (!presetName.trim()) return
+    addFilterPreset({
+      name: presetName.trim(),
+      sentiment,
+      category,
+      replySpeed,
+      changeType,
+      forum,
+      board,
+    })
+    setPresetName('')
+    setShowSaveInput(false)
+  }
+
+  const getPresetMatchCount = (preset: FilterPreset) => {
+    let match = 0
+    if (preset.sentiment === sentiment) match++
+    if (preset.category === category) match++
+    if (preset.replySpeed === replySpeed) match++
+    if (preset.changeType === changeType) match++
+    if (preset.forum === forum) match++
+    if (preset.board === board) match++
+    return match
+  }
 
   return (
     <div className="space-y-3 rounded-xl border border-white/5 bg-[#12122a] p-4">
+      {filterPresets.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 border-b border-white/5 pb-3">
+          <div className="flex items-center gap-1.5">
+            <Bookmark className="h-3.5 w-3.5 text-gray-500" />
+            <span className="mr-1 text-[11px] font-medium text-gray-500">筛选方案</span>
+          </div>
+          {filterPresets.map((preset) => {
+            const isActive = getPresetMatchCount(preset) === 6
+            return (
+              <div
+                key={preset.id}
+                className={cn(
+                  'group flex items-center gap-1 rounded-full border px-2.5 py-1 text-[11px] transition-all',
+                  isActive
+                    ? 'border-amber-500/40 bg-amber-500/10 text-amber-400'
+                    : 'border-white/5 bg-white/[0.03] text-gray-400 hover:border-white/10 hover:text-gray-200'
+                )}
+              >
+                <button
+                  onClick={() => onApplyPreset(preset)}
+                  className="flex items-center gap-1"
+                >
+                  {preset.builtIn && <span className="h-1 w-1 rounded-full bg-current opacity-60" />}
+                  {preset.name}
+                </button>
+                {!preset.builtIn && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      removeFilterPreset(preset.id)
+                    }}
+                    className="ml-0.5 rounded-full p-0.5 text-gray-600 opacity-0 transition-all hover:text-rose-400 group-hover:opacity-100"
+                  >
+                    <X className="h-2.5 w-2.5" />
+                  </button>
+                )}
+              </div>
+            )
+          })}
+
+          {showSaveInput ? (
+            <div className="flex items-center gap-1.5">
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSavePreset()}
+                placeholder="方案名称"
+                className="w-24 rounded-full border border-amber-500/30 bg-amber-500/5 px-2 py-0.5 text-[11px] text-amber-300 placeholder-gray-500 outline-none focus:border-amber-500/60"
+              />
+              <button
+                onClick={handleSavePreset}
+                className="rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-medium text-amber-400 hover:bg-amber-500/30"
+              >
+                保存
+              </button>
+              <button
+                onClick={() => {
+                  setShowSaveInput(false)
+                  setPresetName('')
+                }}
+                className="rounded-full p-1 text-gray-500 hover:text-gray-300"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            hasFilters && (
+              <button
+                onClick={() => setShowSaveInput(true)}
+                className="flex items-center gap-1 rounded-full border border-dashed border-white/10 px-2.5 py-1 text-[11px] text-gray-500 transition-colors hover:border-amber-500/30 hover:text-amber-400"
+              >
+                <BookmarkPlus className="h-3 w-3" />
+                保存方案
+              </button>
+            )
+          )}
+        </div>
+      )}
+
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-xs font-semibold text-gray-400">
           <Filter className="h-3.5 w-3.5" />
