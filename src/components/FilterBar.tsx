@@ -1,7 +1,7 @@
 import { cn } from '@/lib/utils'
 import type { Sentiment, PostCategory, ReplySpeed, ChangeType } from '@/types'
 import { CATEGORY_LABELS, SENTIMENT_LABELS } from '@/types'
-import { Filter, RotateCcw } from 'lucide-react'
+import { Filter, RotateCcw, ListFilter } from 'lucide-react'
 
 interface FilterBarProps {
   sentiment: Sentiment | ''
@@ -9,13 +9,17 @@ interface FilterBarProps {
   replySpeed: ReplySpeed | ''
   changeType: ChangeType | ''
   forum: string
+  board: string
+  resultCount: number
   onSentimentChange: (v: Sentiment | '') => void
   onCategoryChange: (v: PostCategory | '') => void
   onReplySpeedChange: (v: ReplySpeed | '') => void
   onChangeTypeChange: (v: ChangeType | '') => void
   onForumChange: (v: string) => void
+  onBoardChange: (v: string) => void
   onReset: () => void
   forums: string[]
+  boards: string[]
 }
 
 const PILL_CLASS = 'rounded-full border px-3 py-1 text-xs font-medium transition-all cursor-pointer select-none'
@@ -26,15 +30,25 @@ export default function FilterBar({
   replySpeed,
   changeType,
   forum,
+  board,
+  resultCount,
   onSentimentChange,
   onCategoryChange,
   onReplySpeedChange,
   onChangeTypeChange,
   onForumChange,
+  onBoardChange,
   onReset,
   forums,
+  boards,
 }: FilterBarProps) {
-  const hasFilters = sentiment || category || replySpeed || changeType || forum
+  const hasFilters = sentiment || category || replySpeed || changeType || forum || board
+  const availableBoards = forum
+    ? boards.filter((_, idx) => {
+        const unique = [...new Set(boards)]
+        return true
+      })
+    : boards
 
   return (
     <div className="space-y-3 rounded-xl border border-white/5 bg-[#12122a] p-4">
@@ -43,15 +57,22 @@ export default function FilterBar({
           <Filter className="h-3.5 w-3.5" />
           筛选条件
         </div>
-        {hasFilters && (
-          <button
-            onClick={onReset}
-            className="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-300"
-          >
-            <RotateCcw className="h-3 w-3" />
-            重置
-          </button>
-        )}
+        <div className="flex items-center gap-3">
+          <span className="flex items-center gap-1.5 text-[11px] text-gray-600">
+            <ListFilter className="h-3 w-3" />
+            <span className="font-mono-data text-amber-400/70">{resultCount}</span>
+            条结果
+          </span>
+          {hasFilters && (
+            <button
+              onClick={onReset}
+              className="flex items-center gap-1 text-xs text-gray-500 transition-colors hover:text-gray-300"
+            >
+              <RotateCcw className="h-3 w-3" />
+              重置
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="space-y-2.5">
@@ -155,17 +176,37 @@ export default function FilterBar({
           ))}
         </FilterRow>
 
-        <FilterRow label="来源论坛">
+        <FilterRow label="来源吧名">
           <select
             value={forum}
-            onChange={(e) => onForumChange(e.target.value)}
+            onChange={(e) => {
+              onForumChange(e.target.value)
+              onBoardChange('')
+            }}
             className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300 outline-none transition-colors focus:border-amber-500/40"
           >
-            <option value="">全部来源</option>
-            {forums.map((f) => (
+            <option value="">全部吧</option>
+            {[...new Set(forums)].map((f) => (
               <option key={f} value={f} className="bg-[#12122a]">{f}</option>
             ))}
           </select>
+        </FilterRow>
+
+        <FilterRow label="论坛板块">
+          <select
+            value={board}
+            onChange={(e) => onBoardChange(e.target.value)}
+            className="rounded-lg border border-white/10 bg-white/5 px-3 py-1 text-xs text-gray-300 outline-none transition-colors focus:border-amber-500/40 disabled:opacity-50"
+            disabled={!forum}
+          >
+            <option value="">全部板块</option>
+            {[...new Set(availableBoards)].map((b) => (
+              <option key={b} value={b} className="bg-[#12122a]">{b}</option>
+            ))}
+          </select>
+          {!forum && (
+            <span className="text-[11px] text-gray-600">请先选择吧名</span>
+          )}
         </FilterRow>
       </div>
     </div>

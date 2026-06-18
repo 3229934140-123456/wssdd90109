@@ -4,11 +4,13 @@ import { Settings, Activity, Bell } from 'lucide-react'
 import ChangeCard from '@/components/ChangeCard'
 import KeywordPanel from '@/components/KeywordPanel'
 import PostCard from '@/components/PostCard'
+import PostDetailModal from '@/components/PostDetailModal'
 import { cn } from '@/lib/utils'
 
 export default function Home() {
   const { posts, keywords, getDisposalByPostId } = useStore()
   const [keywordPanelOpen, setKeywordPanelOpen] = useState(false)
+  const [selectedPost, setSelectedPost] = useState<typeof posts[0] | null>(null)
 
   const newCount = posts.filter((p) => p.changeType === 'new').length
   const hotCount = posts.filter((p) => p.changeType === 'hot').length
@@ -80,8 +82,8 @@ export default function Home() {
             >
               <PostCard
                 post={post}
-                onClick={() => {}}
-                disposalStatus={getDisposalByPostId(post.id)?.status}
+                onClick={() => setSelectedPost(post)}
+                disposalRecord={getDisposalByPostId(post.id)}
               />
             </div>
           ))}
@@ -89,6 +91,13 @@ export default function Home() {
       </div>
 
       <KeywordPanel open={keywordPanelOpen} onClose={() => setKeywordPanelOpen(false)} />
+      {selectedPost && (
+        <PostDetailModal
+          post={selectedPost}
+          open={!!selectedPost}
+          onClose={() => setSelectedPost(null)}
+        />
+      )}
     </div>
   )
 }

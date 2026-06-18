@@ -1,7 +1,7 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useStore } from '@/store'
 import { useSearchParams } from 'react-router-dom'
-import { FileText, Search } from 'lucide-react'
+import { FileText, Search, CheckCircle, Clock } from 'lucide-react'
 import PostCard from '@/components/PostCard'
 import PostDetailModal from '@/components/PostDetailModal'
 import FilterBar from '@/components/FilterBar'
@@ -9,7 +9,7 @@ import type { Post, Sentiment, PostCategory, ReplySpeed, ChangeType } from '@/ty
 
 export default function Posts() {
   const { posts, getDisposalByPostId } = useStore()
-  const [searchParams] = useSearchParams()
+  const [searchParams, setSearchParams] = useSearchParams()
 
   const [sentiment, setSentiment] = useState<Sentiment | ''>('')
   const [category, setCategory] = useState<PostCategory | ''>('')
@@ -18,13 +18,34 @@ export default function Posts() {
     (searchParams.get('changeType') as ChangeType) || ''
   )
   const [forum, setForum] = useState('')
+  const [board, setBoard] = useState('')
   const [search, setSearch] = useState('')
   const [selectedPost, setSelectedPost] = useState<Post | null>(null)
+
+  useEffect(() => {
+    const nextParams: Record<string, string> = {}
+    if (changeType) nextParams.changeType = changeType
+    if (Object.keys(nextParams).length > 0) {
+      setSearchParams(nextParams)
+    } else {
+      setSearchParams({})
+    }
+  }, [changeType, setSearchParams])
 
   const forums = useMemo(
     () => [...new Set(posts.map((p) => p.forum))].sort(),
     [posts]
   )
+
+  const allBoards = useMemo(
+    () => [...new Set(posts.map((p) => p.board))].sort(),
+    [posts]
+  )
+
+  const filteredBoards = useMemo(() => {
+    if (!forum) return allBoards
+    return [...new Set(posts.filter((p) => p.forum === forum).map((p) => p.board))].sort()
+  }, [posts, forum, allBoards])
 
   const filtered = useMemo(() => {
     return posts.filter((p) => {
@@ -33,6 +54,7 @@ export default function Posts() {
       if (replySpeed && p.replySpeed !== replySpeed) return false
       if (changeType && p.changeType !== changeType) return false
       if (forum && p.forum !== forum) return false
+      if (board && p.board !== board) return false
       if (search) {
         const q = search.toLowerCase()
         return (
@@ -43,7 +65,20 @@ export default function Posts() {
       }
       return true
     })
-  }, [posts, sentiment, category, replySpeed, changeType, forum, search])
+  }, [posts, sentiment, category, replySpeed, changeType, forum, board, search])
+
+  const handledCount = useMemo(
+    () => posts.filter((p) => getDisposalByPostId(p.id)).length,
+    [posts, getDisposalByPostId]
+  )
+
+  const unhandledHighRiskCount = useMemo(
+    () =>
+      posts.filter(
+        (p) => p.sentiment === 'negative' && p.heatScore >= 60 && !getDisposalByPostId(p.id)
+      ).length,
+    [posts, getDisposalByPostId]
+  )
 
   const handleReset = () => {
     setSentiment('')
@@ -51,6 +86,7 @@ export default function Posts() {
     setReplySpeed('')
     setChangeType('')
     setForum('')
+    setBoard('')
     setSearch('')
   }
 
@@ -60,7 +96,8 @@ export default function Posts() {
         <div>
           <h1 className="text-2xl font-bold text-gray-100">帖子分层</h1>
           <p className="mt-1 text-sm text-gray-500">
-            共 {filtered.length} 条讨论 · 已处置 {posts.filter((p) => getDisposalByPostId(p.id)).length} 条
+            共 {posts.length} 条讨论 · 已处置 <span className="text-emerald-400">{handledCount}</span> 条 ·
+            高风险未处理 <span className="text-rose-400">{unhandledHighRiskCount}</span> 条
           </p>
         </div>
         <div className="relative">
@@ -75,19 +112,40 @@ export default function Posts() {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex items-center gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-3">
+          <CheckCircle className="h-5 w-5 text-emerald-400" />
+          <div>
+            <div className="font-mono-data text-xl font-bold text-emerald-400">{handledCount}</div>
+            <div className="text-[11px] text-emerald-400/60">已处置</div>
+          </div>
+        </div>
+        <div className="flex items-center gap-3 rounded-xl border border-rose-500/20 bg-rose-500/5 p-3">
+          <Clock className="h-5 w-5 text-rose-400" />
+          <div>
+            <div className="font-mono-data text-xl font-bold text-rose-400">{unhandledHighRiskCount}</div>
+            <div className="text-[11px] text-rose-400/60">高风险待处理</div>
+          </div>
+        </div>
+      </div>
+
       <FilterBar
         sentiment={sentiment}
         category={category}
         replySpeed={replySpeed}
         changeType={changeType}
         forum={forum}
+        board={board}
+        resultCount={filtered.length}
         onSentimentChange={setSentiment}
         onCategoryChange={setCategory}
         onReplySpeedChange={setReplySpeed}
         onChangeTypeChange={setChangeType}
         onForumChange={setForum}
+        onBoardChange={setBoard}
         onReset={handleReset}
         forums={forums}
+        boards={filteredBoards}
       />
 
       {filtered.length === 0 ? (
@@ -102,7 +160,7 @@ export default function Posts() {
               key={post.id}
               post={post}
               onClick={() => setSelectedPost(post)}
-              disposalStatus={getDisposalByPostId(post.id)?.status}
+              disposalRecord={getDisposalByPostId(post.id)}
             />
           ))}
         </div>

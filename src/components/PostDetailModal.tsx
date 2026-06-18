@@ -1,8 +1,8 @@
-import { useState } from 'react'
-import { X, ExternalLink, User, Save } from 'lucide-react'
+import { useState, useMemo } from 'react'
+import { X, ExternalLink, User, Save, History, CheckCircle2, Clock } from 'lucide-react'
 import { useStore } from '@/store'
 import { cn } from '@/lib/utils'
-import type { Post, DisposalStatus } from '@/types'
+import type { Post, DisposalStatus, DisposalRecord } from '@/types'
 import { CATEGORY_LABELS, SENTIMENT_LABELS, DISPOSAL_LABELS } from '@/types'
 
 interface PostDetailModalProps {
@@ -35,9 +35,37 @@ const DISPOSAL_STYLES: Record<DisposalStatus, { bg: string; border: string; acti
   },
 }
 
+function formatTime(iso: string): string {
+  const d = new Date(iso)
+  const now = new Date()
+  const diffMs = now.getTime() - d.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 1) return '刚刚'
+  if (diffMins < 60) return `${diffMins}分钟前`
+  if (diffHours < 24) return `${diffHours}小时前`
+  if (diffDays < 7) return `${diffDays}天前`
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`
+}
+
+function getStatusColor(status: DisposalStatus) {
+  switch (status) {
+    case 'customer_service':
+      return { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400' }
+    case 'legal':
+      return { bg: 'bg-rose-500/10', border: 'border-rose-500/20', text: 'text-rose-400' }
+    case 'observe':
+      return { bg: 'bg-sky-500/10', border: 'border-sky-500/20', text: 'text-sky-400' }
+  }
+}
+
 export default function PostDetailModal({ post, open, onClose }: PostDetailModalProps) {
-  const { addDisposalRecord, updateDisposalRecord, getDisposalByPostId } = useStore()
-  const existing = getDisposalByPostId(post.id)
+  const { addDisposalRecord, updateDisposalRecord, getDisposalByPostId, getDisposalHistoryByPostId } = useStore()
+
+  const history = useMemo(() => getDisposalHistoryByPostId(post.id), [post.id, getDisposalHistoryByPostId])
+  const existing = history[0]
 
   const [status, setStatus] = useState<DisposalStatus>(existing?.status ?? 'observe')
   const [conclusion, setConclusion] = useState(existing?.conclusion ?? '')
@@ -116,9 +144,55 @@ export default function PostDetailModal({ post, open, onClose }: PostDetailModal
             </a>
           </div>
 
+          {history.length > 0 && (
+            <div className="border-t border-white/5 px-6 py-5">
+              <h4 className="mb-3 flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-gray-500">
+                <History className="h-3.5 w-3.5" />
+                处置历史记录
+                <span className="ml-auto text-[10px] font-normal text-gray-600">共 {history.length} 条</span>
+              </h4>
+              <div className="space-y-3">
+                {history.map((record: DisposalRecord, idx: number) => {
+                  const colors = getStatusColor(record.status)
+                  const isLatest = idx === 0
+                  return (
+                    <div
+                      key={record.id}
+                      className={cn(
+                        'rounded-lg border p-3',
+                        isLatest ? 'bg-white/[0.03] border-white/10' : 'bg-white/[0.01] border-white/5 opacity-70'
+                      )}
+                    >
+                      <div className="mb-2 flex items-center gap-2">
+                        {isLatest ? (
+                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                        ) : (
+                          <Clock className="h-3.5 w-3.5 text-gray-600" />
+                        )}
+                        <span className={cn(
+                          'rounded-full border px-2 py-0.5 text-[10px] font-medium',
+                          colors.bg,
+                          colors.border,
+                          colors.text
+                        )}>
+                          {DISPOSAL_LABELS[record.status]}
+                        </span>
+                        <span className="text-[10px] text-gray-600">{record.handler}</span>
+                        <span className="ml-auto text-[10px] text-gray-600">{formatTime(record.handledAt)}</span>
+                      </div>
+                      {record.conclusion && (
+                        <p className="text-xs text-gray-400">{record.conclusion}</p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
           <div className="border-t border-white/5 px-6 py-5">
             <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-gray-500">
-              处置标记
+              {existing ? '更新处置' : '处置标记'}
             </h4>
             <div className="mb-4 flex gap-2">
               {(Object.keys(DISPOSAL_LABELS) as DisposalStatus[]).map((s) => {
