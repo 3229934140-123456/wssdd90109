@@ -1,5 +1,5 @@
 import { NavLink, useLocation } from 'react-router-dom'
-import { LayoutDashboard, FileText, Newspaper, ChevronLeft, ChevronRight } from 'lucide-react'
+import { LayoutDashboard, FileText, Newspaper, ChevronLeft, ChevronRight, GitBranch } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useState } from 'react'
 
@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: '/', icon: LayoutDashboard, label: '关键词看板' },
   { to: '/posts', icon: FileText, label: '帖子分层' },
   { to: '/daily-report', icon: Newspaper, label: '日报生成' },
+  { to: '/timeline', icon: GitBranch, label: '舆情复盘' },
 ]
 
 export default function Sidebar() {

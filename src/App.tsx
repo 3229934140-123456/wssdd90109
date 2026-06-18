@@ -3,6 +3,7 @@ import Sidebar from '@/components/Sidebar'
 import Home from '@/pages/Home'
 import Posts from '@/pages/Posts'
 import DailyReport from '@/pages/DailyReport'
+import Timeline from '@/pages/Timeline'
 
 export default function App() {
   return (
@@ -14,6 +15,7 @@ export default function App() {
             <Route path="/" element={<Home />} />
             <Route path="/posts" element={<Posts />} />
             <Route path="/daily-report" element={<DailyReport />} />
+            <Route path="/timeline" element={<Timeline />} />
           </Routes>
         </main>
       </div>

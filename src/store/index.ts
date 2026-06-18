@@ -1,11 +1,50 @@
 import { create } from 'zustand'
-import type { Keyword, Post, DisposalRecord, DisposalStatus, KeywordCategory, FilterPreset, Sentiment, PostCategory, ReplySpeed, ChangeType } from '@/types'
+import type { Keyword, Post, DisposalRecord, DisposalStatus, KeywordCategory, FilterPreset, Sentiment, PostCategory, ReplySpeed, ChangeType, TeamRole, KeywordAdoption, HeatSnapshot } from '@/types'
 import { MOCK_KEYWORDS, MOCK_POSTS } from '@/data/mock'
 
 const STORAGE_KEYS = {
   keywords: 'reputation_keywords_v1',
   disposalRecords: 'reputation_disposals_v1',
   filterPresets: 'reputation_filter_presets_v1',
+  keywordAdoptions: 'reputation_kw_adoptions_v1',
+}
+
+function generateHeatSnapshots(posts: Post[]): HeatSnapshot[] {
+  const snapshots: HeatSnapshot[] = []
+  for (const post of posts) {
+    if (post.sentiment === 'negative' && post.heatScore >= 50) {
+      const created = new Date(post.createdAt)
+      snapshots.push({
+        postId: post.id,
+        timestamp: new Date(created.getTime() - 2 * 3600000).toISOString(),
+        heatScore: Math.max(20, Math.floor(post.heatScore * 0.4)),
+        event: 'emerged',
+      })
+      snapshots.push({
+        postId: post.id,
+        timestamp: new Date(created.getTime() - 1 * 3600000).toISOString(),
+        heatScore: Math.max(35, Math.floor(post.heatScore * 0.7)),
+        event: 'heating',
+      })
+      if (post.heatScore >= 70) {
+        snapshots.push({
+          postId: post.id,
+          timestamp: created.toISOString(),
+          heatScore: post.heatScore,
+          event: 'peak',
+        })
+      }
+      if (post.heatScore < 90) {
+        snapshots.push({
+          postId: post.id,
+          timestamp: new Date(created.getTime() + 1 * 3600000).toISOString(),
+          heatScore: Math.max(30, Math.floor(post.heatScore * 0.6)),
+          event: 'cooling',
+        })
+      }
+    }
+  }
+  return snapshots.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
 }
 
 const DEFAULT_PRESETS: FilterPreset[] = [
@@ -37,24 +76,42 @@ interface AppState {
   posts: Post[]
   disposalRecords: DisposalRecord[]
   filterPresets: FilterPreset[]
+  keywordAdoptions: KeywordAdoption[]
+  heatSnapshots: HeatSnapshot[]
 
-  addKeyword: (keyword: Keyword) => void
+  addKeyword: (keyword: Keyword, trackAdoption?: boolean) => void
   removeKeyword: (id: string) => void
   updateKeywordCategory: (id: string, category: KeywordCategory) => void
 
-  addDisposalRecord: (postId: string, status: DisposalStatus, conclusion: string, handler: string) => void
-  updateDisposalRecord: (postId: string, status: DisposalStatus, conclusion: string) => void
+  addDisposalRecord: (
+    postId: string,
+    status: DisposalStatus,
+    conclusion: string,
+    handler: string,
+    assignee?: TeamRole,
+    deadline?: string
+  ) => void
+  updateDisposalRecord: (
+    postId: string,
+    status: DisposalStatus,
+    conclusion: string,
+    assignee?: TeamRole,
+    deadline?: string,
+    completed?: boolean
+  ) => void
 
   addFilterPreset: (preset: Omit<FilterPreset, 'id'>) => void
   removeFilterPreset: (id: string) => void
 
   getDisposalByPostId: (postId: string) => DisposalRecord | undefined
   getDisposalHistoryByPostId: (postId: string) => DisposalRecord[]
+  getDisposalsByRole: (role: TeamRole) => DisposalRecord[]
   getPostsByKeyword: (keywordText: string) => Post[]
   getKeywordHitCount: (keywordText: string) => number
   getCategoryCoverage: (category: KeywordCategory) => number
   getUnmatchedHighHeatNegative: () => Post[]
   getSuggestedKeywords: () => { text: string; category: KeywordCategory; reason: string }[]
+  getHeatTimeline: (postId: string) => HeatSnapshot[]
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -62,12 +119,27 @@ export const useStore = create<AppState>((set, get) => ({
   posts: [...MOCK_POSTS],
   disposalRecords: loadFromStorage(STORAGE_KEYS.disposalRecords, []),
   filterPresets: loadFromStorage(STORAGE_KEYS.filterPresets, [...DEFAULT_PRESETS]),
+  keywordAdoptions: loadFromStorage(STORAGE_KEYS.keywordAdoptions, []),
+  heatSnapshots: generateHeatSnapshots(MOCK_POSTS),
 
-  addKeyword: (keyword) =>
+  addKeyword: (keyword, trackAdoption = true) =>
     set((state) => {
       const next = [...state.keywords, keyword]
       saveToStorage(STORAGE_KEYS.keywords, next)
-      return { keywords: next }
+      const nextAdoptions = trackAdoption
+        ? [
+            ...state.keywordAdoptions,
+            {
+              id: `ad_${Date.now()}`,
+              keyword: keyword.text,
+              category: keyword.category,
+              adoptedAt: new Date().toISOString(),
+              coverageBefore: state.getCategoryCoverage(keyword.category),
+            },
+          ]
+        : state.keywordAdoptions
+      saveToStorage(STORAGE_KEYS.keywordAdoptions, nextAdoptions)
+      return { keywords: next, keywordAdoptions: nextAdoptions }
     }),
 
   removeKeyword: (id) =>
@@ -92,8 +164,9 @@ export const useStore = create<AppState>((set, get) => ({
       return { keywords: next }
     }),
 
-  addDisposalRecord: (postId, status, conclusion, handler) =>
+  addDisposalRecord: (postId, status, conclusion, handler, assignee, deadline) =>
     set((state) => {
+      const now = new Date().toISOString()
       const next = [
         ...state.disposalRecords,
         {
@@ -102,16 +175,33 @@ export const useStore = create<AppState>((set, get) => ({
           status,
           conclusion,
           handler,
-          handledAt: new Date().toISOString(),
+          handledAt: now,
+          assignee,
+          deadline,
+          completed: false,
         },
       ]
       saveToStorage(STORAGE_KEYS.disposalRecords, next)
-      return { disposalRecords: next }
+      const post = state.posts.find((p) => p.id === postId)
+      const nextSnapshots = post && post.heatScore >= 50
+        ? [
+            ...state.heatSnapshots,
+            {
+              postId,
+              timestamp: now,
+              heatScore: post.heatScore,
+              event: 'disposed' as const,
+              note: `${handler} 标记为 ${status}`,
+            },
+          ]
+        : state.heatSnapshots
+      return { disposalRecords: next, heatSnapshots: nextSnapshots }
     }),
 
-  updateDisposalRecord: (postId, status, conclusion) =>
+  updateDisposalRecord: (postId, status, conclusion, assignee, deadline, completed) =>
     set((state) => {
       const existing = state.disposalRecords.find((r) => r.postId === postId)
+      const now = new Date().toISOString()
       const next = [
         ...state.disposalRecords,
         {
@@ -120,11 +210,28 @@ export const useStore = create<AppState>((set, get) => ({
           status,
           conclusion,
           handler: existing?.handler || '当前用户',
-          handledAt: new Date().toISOString(),
+          handledAt: now,
+          assignee: assignee ?? existing?.assignee,
+          deadline: deadline ?? existing?.deadline,
+          completed: completed ?? false,
+          completedAt: completed ? now : undefined,
         },
       ]
       saveToStorage(STORAGE_KEYS.disposalRecords, next)
-      return { disposalRecords: next }
+      const post = state.posts.find((p) => p.id === postId)
+      const nextSnapshots = post && completed
+        ? [
+            ...state.heatSnapshots,
+            {
+              postId,
+              timestamp: now,
+              heatScore: Math.max(20, Math.floor((post.heatScore || 0) * 0.5)),
+              event: 'cooling' as const,
+              note: '处置完成，热度下降',
+            },
+          ]
+        : state.heatSnapshots
+      return { disposalRecords: next, heatSnapshots: nextSnapshots }
     }),
 
   getDisposalByPostId: (postId) =>
@@ -135,6 +242,11 @@ export const useStore = create<AppState>((set, get) => ({
   getDisposalHistoryByPostId: (postId) =>
     get().disposalRecords
       .filter((r) => r.postId === postId)
+      .sort((a, b) => new Date(b.handledAt).getTime() - new Date(a.handledAt).getTime()),
+
+  getDisposalsByRole: (role) =>
+    get().disposalRecords
+      .filter((r) => r.assignee === role)
       .sort((a, b) => new Date(b.handledAt).getTime() - new Date(a.handledAt).getTime()),
 
   getPostsByKeyword: (keywordText) =>
@@ -262,4 +374,9 @@ export const useStore = create<AppState>((set, get) => ({
 
     return suggestions.slice(0, 10)
   },
+
+  getHeatTimeline: (postId) =>
+    get().heatSnapshots
+      .filter((s) => s.postId === postId)
+      .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()),
 }))

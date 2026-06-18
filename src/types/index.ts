@@ -34,6 +34,7 @@ export interface Post {
 }
 
 export type DisposalStatus = 'customer_service' | 'legal' | 'observe'
+export type TeamRole = 'pr' | 'cs' | 'legal'
 
 export interface DisposalRecord {
   id: string
@@ -42,6 +43,27 @@ export interface DisposalRecord {
   conclusion: string
   handler: string
   handledAt: string
+  assignee?: TeamRole
+  deadline?: string
+  completed?: boolean
+  completedAt?: string
+}
+
+export interface KeywordAdoption {
+  id: string
+  keyword: string
+  category: KeywordCategory
+  adoptedAt: string
+  coverageBefore?: number
+  coverageAfter?: number
+}
+
+export interface HeatSnapshot {
+  postId: string
+  timestamp: string
+  heatScore: number
+  event: 'emerged' | 'heating' | 'peak' | 'disposed' | 'cooling'
+  note?: string
 }
 
 export interface FilterPreset {
@@ -98,4 +120,18 @@ export const KEYWORD_CATEGORY_LABELS: Record<KeywordCategory, string> = {
   product: '产品别名',
   typo: '常见错别字',
   competitor: '竞品词',
+}
+
+export const TEAM_ROLE_LABELS: Record<TeamRole, string> = {
+  pr: '公关团队',
+  cs: '客服团队',
+  legal: '法务团队',
+}
+
+export const HEAT_EVENT_LABELS: Record<'emerged' | 'heating' | 'peak' | 'disposed' | 'cooling', string> = {
+  emerged: '初次出现',
+  heating: '热度上升',
+  peak: '热度峰值',
+  disposed: '介入处置',
+  cooling: '热度降温',
 }
